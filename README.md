@@ -12,6 +12,12 @@ An ESP32 reads water level from an ultrasonic sensor, publishes it over **Modbus
 
 The system continuously measures the liquid level in a tank and presents it on a real-time operator dashboard. The level reading drives a live tank graphic, a numeric readout, a sensor-health status indicator, and a historian trend that logs every reading for later analysis. When the level crosses a configurable high threshold, the tank graphic changes colour to draw operator attention, following ISA-101 design intent (colour reserved for abnormal states only).
 
+![Live SCADA dashboard](TK-101(Normal).jpeg)
+
+![High level alarm state](TK-101(Alarm).jpeg)
+
+![Benchtop hardware](PhysicalBuild.jpeg)
+
 ---
 
 ## Architecture
