@@ -180,4 +180,4 @@ tank-level-scada/
 ## Notes
 
 - The hardware is a deliberately low-cost benchtop prototype. The point was to prove the software stack, the comms protocol, and the HMI logic before investing in industrial-grade instrumentation.
-- AI was used as a coding assistant for firmware boilerplate. All calibration, integration, debugging, Ignition configuration, and HMI design were done hands-on.
+- AI was used as a coding assistant. All calibration, integration, debugging, Ignition configuration, and HMI design were done by me. 
