@@ -14,6 +14,10 @@ An ESP32 reads water level from an ultrasonic sensor, runs a closed-loop control
 
 The system continuously measures the liquid level in a tank and presents it on a real-time operator dashboard. The level reading drives a live tank graphic, a numeric readout, a sensor-health status indicator, and a historian trend that logs every reading for later analysis. When the level crosses a configurable high threshold, the tank graphic changes colour to draw operator attention, following ISA-101 design intent (colour reserved for abnormal states only).
 
+![Phase 1 dashboard, normal state](TK-101%28Normal%29.jpeg)
+
+![Phase 1 dashboard, high level alarm](TK-101%28Alarm%29.jpeg)
+
 ### Phase 2: Closed-Loop Control
 
 The system **actively maintains** the water level at an operator-chosen setpoint instead of just watching it. Two submersible pumps (one fill, one drain) are switched by a relay using **two-position (bang-bang) control with a deadband**. The operator types a target level on the dashboard, the command travels back to the ESP32 over Modbus, and the controller drives the physical process to hold that level. Water is cycled between a main tank and a reservoir entirely under autonomous control.
@@ -28,10 +32,9 @@ Level inside the deadband   ->  both pumps OFF                  (holding)
 
 > **Why bang-bang and not PID?** Two-position control is a legitimate, widely used industrial strategy for level, HVAC, and boiler systems. It maps cleanly onto a relay (an on/off output) with no variable-speed pump hardware. A PID upgrade with MOSFET PWM is planned as Phase 3.
 
-<!-- Add real-water screenshots here once captured:
-![Live control dashboard](docs/dashboard_phase2.png)
-![Sensor fault state](docs/dashboard_fault.png)
--->
+![Phase 2 control dashboard](TK-101-Phase-2.jpeg)
+
+![Phase 2 control dashboard, alternate state](TK-101-Phase-2%282%29.jpeg)
 
 ![Benchtop hardware](PhysicalBuild.jpeg)
 
@@ -234,14 +237,13 @@ With the sensor mounted in its final position, measure: `EMPTY_DIST_CM` (sensor 
 ```
 Tank-Level-SCADA/
 |-- README.md
-|-- firmware/
-|   |-- tank_level_bringup.ino      # Phase 1: calibrated sensor read, serial output
-|   |-- tank_level_modbus.ino       # Phase 1: Modbus TCP monitoring server
-|   |-- tank_level_control.ino      # Phase 2: closed-loop control + safety layer
-|-- docs/
-    |-- dashboard_phase2.png        # live control dashboard
-    |-- dashboard_fault.png         # fault state
-    |-- ignition_config/            # device + tag setup screenshots
+|-- TankLevelScadaCode.ino     # Phase 1: Modbus TCP monitoring firmware
+|-- Phase-2-Git.ino            # Phase 2: closed-loop control + safety layer
+|-- TK-101(Normal).jpeg        # Phase 1 dashboard, normal state
+|-- TK-101(Alarm).jpeg         # Phase 1 dashboard, high level alarm
+|-- TK-101-Phase-2.jpeg        # Phase 2 control dashboard
+|-- TK-101-Phase-2(2).jpeg     # Phase 2 control dashboard, alternate state
+|-- PhysicalBuild.jpeg         # benchtop hardware
 ```
 
 > **Before you run the firmware:** open the `.ino` and replace the WiFi placeholders.
