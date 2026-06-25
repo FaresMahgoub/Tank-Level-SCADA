@@ -1,10 +1,11 @@
-# Tank Level SCADA: Monitoring & Closed-Loop Control
+[Phase3readME.md](https://github.com/user-attachments/files/29318246/Phase3readME.md)
+# Tank Level SCADA: Monitoring, Closed-Loop Control & ISA-18.2 Alarm Management
 
-A benchtop IIoT level control system that takes a raw ultrasonic sensor reading and gets it all the way onto a live industrial SCADA dashboard with operator-adjustable control, using the same protocols and design standards found in real process plants.
+A benchtop IIoT level control system that takes a raw ultrasonic sensor reading and gets it all the way onto a live industrial SCADA dashboard with operator-adjustable control, a rationalised ISA-18.2 alarm system, and a SQL-backed analytics layer, using the same protocols and design standards found in real process plants.
 
-An ESP32 reads water level from an ultrasonic sensor, runs a closed-loop control algorithm that drives two pumps through a relay, publishes everything over **Modbus TCP**, and streams it to a live **Ignition (Perspective)** dashboard built to **ISA-101 high-performance HMI** principles, with historian trending and operator-adjustable setpoints.
+An ESP32 reads water level from an ultrasonic sensor, runs a closed-loop control algorithm that drives two pumps through a relay, publishes everything over **Modbus TCP**, and streams it to a live **Ignition (Perspective)** dashboard built to **ISA-101 high-performance HMI** principles, with historian trending and operator-adjustable setpoints. On top of that sits a full **ISA-18.2 alarm management layer**: rationalised and prioritised alarms with suppression-by-design, a **PostgreSQL**-backed alarm journal, and a custom-built analytics dashboard computing real alarm-performance KPIs (bad-actor ranking, time-in-alarm) in SQL.
 
-> **Project status: Phase 1 (Monitoring) and Phase 2 (Closed-Loop Control) both complete and running on hardware.** Live closed-loop control verified with real water moving between two tanks. See the [Roadmap](#roadmap) below.
+> **Project status: Phase 1 (Monitoring), Phase 2 (Closed-Loop Control), and Phase 3 (ISA-18.2 Alarm Management & Analytics) all complete and running on hardware.** Live closed-loop control verified with real water moving between two tanks, and the full alarm-management layer verified live (priorities, suppression, acknowledgment, RTN-UNACK state model) with alarm data journaled to PostgreSQL and surfaced through a custom analytics dashboard. See the [Roadmap](#roadmap) below.
 
 ---
 
@@ -18,6 +19,8 @@ The system continuously measures the liquid level in a tank and presents it on a
 
 ![Phase 1 dashboard, high level alarm](TK-101%28Alarm%29.jpeg)
 
+![Benchtop hardware](PhysicalBuild.jpeg)
+
 ### Phase 2: Closed-Loop Control
 
 The system **actively maintains** the water level at an operator-chosen setpoint instead of just watching it. Two submersible pumps (one fill, one drain) are switched by a relay using **two-position (bang-bang) control with a deadband**. The operator types a target level on the dashboard, the command travels back to the ESP32 over Modbus, and the controller drives the physical process to hold that level. Water is cycled between a main tank and a reservoir entirely under autonomous control.
@@ -30,13 +33,33 @@ Level above upper deadband  ->  fill pump OFF, drain pump ON    (falling)
 Level inside the deadband   ->  both pumps OFF                  (holding)
 ```
 
-> **Why bang-bang and not PID?** Two-position control is a legitimate, widely used industrial strategy for level, HVAC, and boiler systems. It maps cleanly onto a relay (an on/off output) with no variable-speed pump hardware. A PID upgrade with MOSFET PWM is planned as Phase 3.
+> **Why bang-bang and not PID?** Two-position control is a legitimate, widely used industrial strategy for level, HVAC, and boiler systems. It maps cleanly onto a relay (an on/off output) with no variable-speed pump hardware. A PID upgrade with MOSFET PWM is planned as a later phase.
 
 ![Phase 2 control dashboard](TK-101-Phase-2.jpeg)
 
 ![Phase 2 control dashboard, alternate state](TK-101-Phase-2%282%29.jpeg)
 
-![Benchtop hardware](PhysicalBuild.jpeg)
+![Phase 3 alarm status and suppression](https://github.com/user-attachments/assets/3873c9ea-ff1e-4453-8948-d59e4b3fc41d)
+
+
+
+### Phase 3: ISA-18.2 Alarm Management & Analytics
+
+Phases 1 and 2 prove the system can watch the process and control it. Phase 3 answers a different question: when something goes wrong, how does the system tell the operator, in what order, and how do you measure whether the alarm system itself is healthy? That is the domain of **ANSI/ISA-18.2-2016**, the standard for management of alarm systems in the process industries, and this phase implements it properly rather than just turning a label red when a number crosses a line.
+
+The work splits into three layers:
+
+- **A rationalised alarm set.** Five alarms (Overflow, Sensor Fault, Dry-Run Latch, Level High, Level Low), each justified against the standard, prioritised by consequence and response time, with a defined operator action. This is backed by a written **alarm philosophy document and master alarm database** (the ISA-18.2 governing artifacts), version-controlled in this repo.
+- **A live alarm system with a real state model.** Priorities, acknowledgment, deadbands to stop chatter, **suppression-by-design** (a sensor fault suppresses the level alarms because the reading is untrusted), and the full state model including return-to-normal-unacknowledged (RTN-UNACK), so a transient alarm that clears before anyone sees it is never silently lost.
+- **A SQL-backed analytics layer.** Every alarm event is journaled to **PostgreSQL**, and a custom-built analytics dashboard computes genuine ISA-18.2 performance metrics directly in SQL: total activations, bad-actor ranking (which alarm fires most), and average time-in-alarm.
+
+The conceptual spine of the design is the split between the firmware safety layer and the supervisory alarm layer. The firmware interlocks (overflow forced-drain, sensor-fault pump halt, dry-run latch) are physical protective functions that act on the process and cannot depend on Ignition being connected, so they stay frozen in the controller. The ISA-18.2 layer is supervisory: it presents, prioritises, acknowledges, logs, and analyses alarms for the operator, and it lives entirely in Ignition. That is the Basic Process Control System versus Safety Instrumented System distinction applied correctly, and the practical consequence is that the entire alarm layer was built with **zero firmware changes**, configured from tags (`LT-101`, `FT-FAULT`) that already stream.
+
+![Phase 3 analytics dashboard](https://github.com/user-attachments/assets/9ca3f9c8-5459-48e8-b4b9-79866217d792)
+
+
+
+> **The full alarm philosophy and master alarm database** (priority matrix, suppression policy, state model, performance targets, lifecycle coverage map) is included as a separate document in this repo. It is the governing artifact every alarm is rationalised against, and it is the piece placed under management of change.
 
 ---
 
@@ -49,13 +72,16 @@ flowchart LR
     C -->|Modbus TCP<br/>over WiFi| D[Ignition Gateway<br/>Modbus TCP driver]
     D --> E[Perspective<br/>control dashboard]
     D --> F[(Historian<br/>trend logging)]
+    D --> J[ISA-18.2 alarm engine<br/>priorities + suppression]
+    J --> K[(PostgreSQL<br/>alarm journal)]
+    K --> L[Analytics dashboard<br/>KPIs + bad-actor ranking]
     E -->|setpoint + deadband<br/>written back| D
     D -->|commands| C
     C --> G[2-ch relay] --> H[Fill pump P-101-Fill]
     G --> I[Drain pump P-101-Drain]
 ```
 
-Data flow in words: physical water level -> ultrasonic sensor -> ESP32 (reads, calibrates, filters, runs control + safety logic) -> Modbus TCP over WiFi -> Ignition Gateway -> live Perspective dashboard + historian. The dashboard writes the setpoint and deadband **back** to the ESP32, which closes the loop.
+Data flow in words: physical water level -> ultrasonic sensor -> ESP32 (reads, calibrates, filters, runs control + safety logic) -> Modbus TCP over WiFi -> Ignition Gateway -> live Perspective dashboard + historian. The dashboard writes the setpoint and deadband **back** to the ESP32, which closes the loop. In parallel, Ignition's alarm engine evaluates the streaming tags against the rationalised alarm set, journals every event to PostgreSQL, and feeds a custom analytics dashboard that computes alarm-performance KPIs in SQL.
 
 ---
 
@@ -177,9 +203,9 @@ Set `SIMULATE_LEVEL = true` to exercise the **entire control loop and every safe
 
 ## Ignition configuration
 
-Built on **Ignition Maker Edition 8.3**.
+Phases 1 and 2 were built on **Ignition Maker Edition 8.3**. Phase 3 required moving to an **Ignition educational license** (see the [Phase 3 section](#isa-182-alarm-management--analytics-phase-3) for why).
 
-> **Why Modbus TCP and not MQTT?** Ignition Maker Edition does not support the Cirrus Link MQTT modules, but includes the Modbus TCP driver natively. Modbus TCP was therefore the correct transport for this edition.
+> **Why Modbus TCP and not MQTT?** Ignition Maker Edition does not support the Cirrus Link MQTT modules, but includes the Modbus TCP driver natively. Modbus TCP was therefore the correct transport for Phases 1 and 2, and it remains the transport in use. (The educational license used from Phase 3 onward does unlock the MQTT modules, so a Sparkplug re-architecture is now possible as future work, but the working system still runs on Modbus TCP.)
 
 ### Device connection
 - Driver: **Modbus TCP**
@@ -226,6 +252,112 @@ A three-column Perspective view following ISA-101 high-performance HMI principle
 
 ---
 
+## ISA-18.2 Alarm Management & Analytics (Phase 3)
+
+This is the supervisory alarm layer described in the [Phase 3 overview](#phase-3-isa-182-alarm-management--analytics) above, documented in full. It is built entirely in Ignition on top of the streaming tags, with no firmware changes.
+
+### Why the educational license
+
+Phases 1 and 2 ran on Maker Edition, which has no database module. The ISA-18.2 alarm journal and the SQL analytics that sit on top of it both require a database connection, which Maker cannot provide. Phase 3 therefore moved to an **Ignition educational license**, which unlocks the full module set (database/SQL, Reporting, Alarm Notification, the Cirrus Link MQTT stack, full OPC UA, and more). The only modules Phase 3 actually depends on are the database connection (for the journal) and the Reporting module (for the formal performance report). The move was a deliberate decision made when the project's needs outgrew Maker's tier, not a default.
+
+### The alarm set (rationalisation)
+
+ISA-18.2 begins with rationalisation: every alarm justified, prioritised by consequence and time-to-respond, with one defined operator action. The five alarms:
+
+| Alarm | Source | Condition | Priority | Consequence if ignored | Operator action |
+|---|---|---|---|---|---|
+| Overflow | `FT-FAULT` = 2 | Firmware-determined level > 11.0 cm | **Critical** | Tank spill (the separator carryover analogue) | Confirm drain is running, investigate cause |
+| Sensor Fault | `FT-FAULT` = 1 | Sustained no-echo | **High** | Measurement lost, control running blind | Inspect HC-SR04 wiring and Echo line |
+| Dry-Run Latch | `FT-FAULT` = 3 | Pump running past firmware timeout | **High** | Pump burnout | Check supply, write a setpoint to clear the latch |
+| Level High | `LT-101` >= 10.0 cm | Early warning before overflow | **Medium** | Approaches overflow | Lower setpoint or check drain path |
+| Level Low | `LT-101` <= 1.5 cm | Early warning before dry-run | **Medium** | Approaches dry-run | Raise setpoint or check supply |
+
+The distribution is one Critical, two High, two Medium. **Level High and Overflow are a deliberate Hi/HiHi pair:** the Medium warning gives the operator runway, the Critical is the escalation. Same logic for Level Low ahead of the Dry-Run Latch.
+
+**Source-of-truth split:** the three fault alarms are sourced from the firmware fault code (`FT-FAULT`), because the firmware is authoritative on safety states. Level High and Level Low are configured fresh in Ignition's analog alarm engine off `LT-101` (with deadbands), not from the crude Phase 2 `HR4`/`HR5` flags, so thresholds can be retuned without reflashing. No physical condition is alarmed from two sources at once.
+
+### Suppression by design
+
+When the level reading is untrusted, alarming on it is worse than not alarming. Two suppression rules, both implemented as Ignition alarm `Enabled` expressions keyed on the fault code:
+
+- **While Sensor Fault is active, Level High and Level Low are suppressed** (the level data cannot be trusted). This is the supervisory mirror of the firmware's own precedence, where sensor-fail gates the overflow check. The same principle applied one layer up.
+- **While Overflow is active, Level High is suppressed**, because it is the subsumed lower member of the Hi/HiHi pair and annunciating both adds noise without information.
+
+Both rules were verified live: triggering a sensor fault made the active Level High alarm vanish from the status table (suppressed, not stacked), and it re-activated on its own the instant the fault cleared while the level was still high. That dynamic round-trip is the stronger proof than just seeing it suppress once.
+
+### The state model (RTN-UNACK)
+
+A naive alarm implementation makes an alarm disappear the moment its condition clears. ISA-18.2 requires the **return-to-normal-unacknowledged** state: an alarm that clears while still unacknowledged persists until the operator acknowledges it, so a transient event is never silently lost. Ignition's alarm engine handles this natively and the dashboard is built to show it, verified live on both a level alarm and a fault alarm.
+
+### PostgreSQL alarm journal
+
+Every alarm lifecycle event is written to **PostgreSQL 18** (local, `localhost:5432`, database `ignition`) via an Ignition alarm journal profile. Ignition auto-creates the `alarm_events` table on the first alarm; there is nothing to create by hand. The schema and encodings that matter for the analytics:
+
+| Column | Meaning |
+|---|---|
+| `eventid` | UUID shared by the Active and Clear rows of one alarm occurrence (this is what makes time-in-alarm computable) |
+| `source` | Fully qualified path, e.g. `prov:default:/tag:LT-101:/alm:Level High` |
+| `priority` | Integer: **4 = Critical, 3 = High, 2 = Medium** |
+| `eventtype` | Integer: **0 = Active, 1 = Clear, 2 = Acknowledge** |
+| `eventtime` | Event timestamp |
+
+The journal is an **immutable event log**, not a state table: one alarm occurrence produces a permanent Active row and a separate permanent Clear row. That paired structure (same `eventid`) is exactly what lets you measure how long an alarm was active.
+
+### The analytics: SQL named queries
+
+The performance metrics are computed in SQL against the journal, developed and verified in pgAdmin, then ported into Ignition **Named Queries** and bound to the dashboard. Five queries do the work.
+
+**Total activations** (Scalar) counts activation events only:
+
+```sql
+SELECT COUNT(*) AS result
+FROM alarm_events
+WHERE eventtype = 0 AND source NOT LIKE 'evt:%'
+```
+
+**Average time-in-alarm** (Scalar) is the relational one: it joins the table to itself, pairing each Active row to its matching Clear row on the shared `eventid`, and averages the gap. `EXTRACT(EPOCH ...)` plus `ROUND` returns clean whole seconds instead of a raw Postgres interval:
+
+```sql
+SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c.eventtime - a.eventtime))))
+FROM alarm_events a
+JOIN alarm_events c ON a.eventid = c.eventid
+WHERE a.eventtype = 0 AND c.eventtype = 1
+```
+
+**Bad-actor ranking** (the centerpiece) counts activations grouped by alarm, most-frequent first. `split_part` pulls the clean alarm name out of the long source path:
+
+```sql
+SELECT split_part(source, '/alm:', 2) AS alarm_name,
+       COUNT(*) AS activations
+FROM alarm_events
+WHERE eventtype = 0
+GROUP BY source
+ORDER BY activations DESC
+```
+
+**Duration by alarm** is the per-alarm version of time-in-alarm: which alarm type ties up the operator longest. **Journal events** formats the raw journal into a readable feed (clean timestamps, decoded state and priority labels via `CASE`, the most recent 50 events).
+
+Two Ignition-specific gotchas worth recording, because they each cost real time:
+
+> **No trailing semicolon in a Named Query.** Ignition appends to your statement, so a trailing `;` closes it early and Ignition's addition becomes a syntax error (`syntax error at or near "LIMIT"`). pgAdmin tolerates the semicolon; Ignition does not.
+
+> **Scalar queries return under the key `result`.** Whatever you alias the column to in the SQL, Ignition's Reporting module exposes a scalar return as `result` (so the report key is `@TotalActivations.result@`, not the SQL alias).
+
+### The custom analytics dashboard
+
+The analytics dashboard (`AlarmAnalytics`) was **built entirely from scratch in a Coordinate layout**, placing every component by hand, rather than relying on Ignition's built-in components. This was a deliberate choice: Perspective ships no simple categorical bar chart (its chart family is built around time-series components with a time axis, which cannot plot "five alarm names ranked by count"), so the centerpiece visual is a fully custom horizontal bar chart driven directly from the `BadActorRanking` query. Every bar's width, colour, label, and value position is computed from the live query result. The dashboard contains:
+
+- **A header band** with the ISA-18.2 title and subtitle.
+- **KPI tiles** for total activations and average time-in-alarm, bound to the scalar queries.
+- **A custom bad-actor bar chart**, bars scaled proportionally and colour-coded by priority (red for Overflow, amber for the fault alarms, cyan for the level alarms).
+- **A custom alarm journal feed**, a Flex Repeater stamping a per-row sub-view, with priority and state colour-coding, reading live from the `JournalEvents` query.
+
+Everything on the dashboard **polls live on a 2-second cycle**, so it updates in real time as alarms fire and clear on the rig. Navigation buttons switch between the operations view (`TK-101`) and the analytics view via a Perspective page configuration. A formal **alarm performance report** (covering the ISA-18.2 Monitoring and Assessment lifecycle stage) was also built in the Reporting module, reading the same Named Queries.
+
+> **Why custom-built everything?** The honest reason is that the built-in components either did not exist for the job (no categorical bar chart) or did not give the control the design needed. Building the bar chart and journal feed by hand from the raw query results is more work, but it is also the part that demonstrates the binding, transform, and layout mechanics actually being understood rather than dragged-and-dropped.
+
+---
+
 ## Recalibration (on tank change)
 
 With the sensor mounted in its final position, measure: `EMPTY_DIST_CM` (sensor to bottom, empty), `FULL_DIST_CM` (sensor to surface at full, leaving ~4 cm dead-zone headroom), and `TANK_RANGE_CM = EMPTY - FULL`. Update those three firmware constants, revisit `HIGH_ALARM_CM` / `LOW_ALARM_CM` / `OVERFLOW_CM`, and set the Ignition view property `tankRange` to the new range so the setpoint line and deadband band rescale.
@@ -239,12 +371,17 @@ Tank-Level-SCADA/
 |-- README.md
 |-- TankLevelScadaCode.ino     # Phase 1: Modbus TCP monitoring firmware
 |-- Phase-2-Git.ino            # Phase 2: closed-loop control + safety layer
+|-- Alarm-Philosophy-and-Master-Alarm-Database.md  # Phase 3: ISA-18.2 governing artifact
 |-- TK-101(Normal).jpeg        # Phase 1 dashboard, normal state
 |-- TK-101(Alarm).jpeg         # Phase 1 dashboard, high level alarm
 |-- TK-101-Phase-2.jpeg        # Phase 2 control dashboard
 |-- TK-101-Phase-2(2).jpeg     # Phase 2 control dashboard, alternate state
+|-- TK-101-Phase-3-Dashboard.jpeg  # Phase 3 analytics dashboard
+|-- TK-101-Phase-3-Status.jpeg     # Phase 3 alarm status / suppression
 |-- PhysicalBuild.jpeg         # benchtop hardware
 ```
+
+> **No firmware change for Phase 3.** The alarm management and analytics layer is built entirely in Ignition on top of the Phase 2 firmware, so there is no new `.ino` file. The Phase 3 deliverable is the alarm philosophy document plus the Ignition configuration described above.
 
 > **Before you run the firmware:** open the `.ino` and replace the WiFi placeholders.
 > ```cpp
@@ -262,6 +399,7 @@ Tank-Level-SCADA/
 3. With `SIMULATE_LEVEL = true`, verify the control loop and safety logic in the Serial Monitor before connecting any hardware.
 4. Mount the sensor in its final position, then measure and update `EMPTY_DIST_CM` and `FULL_DIST_CM` for your tank.
 5. Upload, note the IP printed to serial, add a Modbus TCP device in Ignition pointing at that IP on port 502, configure the address mapping and tags above, and build the Perspective view.
+6. For the Phase 3 alarm layer: on an Ignition edition with a database module, configure the five alarms on `LT-101` and `FT-FAULT` per the alarm philosophy document, stand up PostgreSQL and an alarm journal profile, then add the Named Queries and build the analytics dashboard. No firmware change is needed.
 
 ---
 
@@ -281,16 +419,27 @@ Tank-Level-SCADA/
 - [x] Physical build: two pumps cycling real water between TK-101 and TK-102 under autonomous control
 - [ ] Buzzer physical alarm annunciator
 
-**Phase 3: Single-loop PID (planned)**
+**Phase 3: ISA-18.2 Alarm Management & Analytics (complete, running on hardware)**
+- [x] Alarm philosophy document and master alarm database (the ISA-18.2 governing artifacts)
+- [x] Five rationalised, prioritised alarms with deadbands, sourced from `LT-101` and `FT-FAULT`, zero firmware changes
+- [x] Suppression-by-design (sensor fault suppresses level alarms, overflow suppresses Level High), verified live
+- [x] Full alarm state model including return-to-normal-unacknowledged (RTN-UNACK), verified live
+- [x] PostgreSQL alarm journal capturing every event
+- [x] SQL analytics: total activations, bad-actor ranking, average time-in-alarm, duration-by-alarm
+- [x] Custom-built analytics dashboard (Coordinate layout, custom bar chart and journal feed) polling live
+- [x] Formal alarm performance report via the Reporting module (Monitoring & Assessment lifecycle stage)
+
+**Phase 4: Single-loop PID (planned)**
 - [ ] Variable-speed pump via MOSFET PWM
 - [ ] PID with anti-windup and bumpless manual/auto transfer
-- [ ] ISA-18.2 alarm management: priorities, acknowledgment, journal, time-in-alarm KPIs
+- [ ] Loss-of-control / deviation alarm enabled by the continuous PID output
 
-**Phase 4: Cascade control (planned)**
+**Phase 5: Cascade control (planned)**
 - [ ] YF-S201 flow sensor
 - [ ] Cascade structure: outer level loop sets an inner flow loop setpoint
 
 **Longer term**
+- MQTT / Sparkplug re-architecture (now possible under the educational license) as an alternative transport.
 - Scale the level-control principles toward multiphase (oil/water) separator control, the direction this work is heading.
 
 ---
