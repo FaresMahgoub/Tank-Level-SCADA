@@ -417,7 +417,6 @@ Tank-Level-SCADA/
 - [x] Safety layer: sensor-fail interlock, overflow-forced-drain with hysteresis, dry-run latch (all verified on hardware)
 - [x] ISA-101 control dashboard: alarm banner, process mimic, control faceplate, dual-pen trend
 - [x] Physical build: two pumps cycling real water between TK-101 and TK-102 under autonomous control
-- [ ] Buzzer physical alarm annunciator
 
 **Phase 3: ISA-18.2 Alarm Management & Analytics (complete, running on hardware)**
 - [x] Alarm philosophy document and master alarm database (the ISA-18.2 governing artifacts)
