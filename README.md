@@ -15,11 +15,13 @@ An ESP32 reads water level from an ultrasonic sensor, runs a closed-loop control
 
 The system continuously measures the liquid level in a tank and presents it on a real-time operator dashboard. The level reading drives a live tank graphic, a numeric readout, a sensor-health status indicator, and a historian trend that logs every reading for later analysis. When the level crosses a configurable high threshold, the tank graphic changes colour to draw operator attention, following ISA-101 design intent (colour reserved for abnormal states only).
 
-![Phase 1 dashboard, normal state](TK-101%28Normal%29.jpeg)
+<img width="1418" height="872" alt="TK-101(Normal)" src="https://github.com/user-attachments/assets/8c3276e3-1c2d-4d28-8b86-b3bb980723fd" />
 
-![Phase 1 dashboard, high level alarm](TK-101%28Alarm%29.jpeg)
 
-![Benchtop hardware](PhysicalBuild.jpeg)
+<img width="1422" height="881" alt="TK-101(Alarm)" src="https://github.com/user-attachments/assets/44cb305b-e93f-455f-9847-647c4d36eb61" />
+
+<img width="1280" height="959" alt="PhysicalBuild" src="https://github.com/user-attachments/assets/50a56878-06c3-44ee-8a5a-d934a92e1618" />
+
 
 ### Phase 2: Closed-Loop Control
 
@@ -35,9 +37,10 @@ Level inside the deadband   ->  both pumps OFF                  (holding)
 
 > **Why bang-bang and not PID?** Two-position control is a legitimate, widely used industrial strategy for level, HVAC, and boiler systems. It maps cleanly onto a relay (an on/off output) with no variable-speed pump hardware. A PID upgrade with MOSFET PWM is planned as a later phase.
 
-![Phase 2 control dashboard](TK-101-Phase-2.jpeg)
+<img width="1280" height="720" alt="TK-101-Phase-2(2)" src="https://github.com/user-attachments/assets/cc70b8ab-efb2-4cba-b40f-dcdb7f646cc0" />
 
-![Phase 2 control dashboard, alternate state](TK-101-Phase-2%282%29.jpeg)
+<img width="1280" height="720" alt="TK-101-Phase-2" src="https://github.com/user-attachments/assets/ecbc06ed-d1d2-4a3f-afe9-18c69ef6e3a6" />
+
 
 ![Phase 3 alarm status and suppression](https://github.com/user-attachments/assets/3873c9ea-ff1e-4453-8948-d59e4b3fc41d)
 
